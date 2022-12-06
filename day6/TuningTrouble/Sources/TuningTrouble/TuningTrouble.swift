@@ -1,6 +1,11 @@
 import Foundation
 
-struct Queue {
+public enum Mode: Int {
+    case packetStart = 4
+    case message = 14
+}
+
+struct Packet {
     let length: Int
     var items: [Character]
     var count: Int
@@ -31,14 +36,14 @@ struct Queue {
     }
 }
 
-public func runFile() -> Int {
+public func runFile(_ mode: Mode) -> Int {
     let data = try! readFile()
-    return findMarker(data: data)
+    return findMarker(data: data, mode)
 }
 
-public func findMarker(data: String) -> Int {
-    let packetLength = 4
-    var q = Queue(length: packetLength)
+public func findMarker(data: String, _ mode: Mode) -> Int {
+    let packetLength = mode.rawValue
+    var q = Packet(length: packetLength)
     var result: Int? = nil
     
     _ = data.first { c in
@@ -51,7 +56,7 @@ public func findMarker(data: String) -> Int {
         return false
     }
     
-    return result!
+    return result! // I promise there's a packet in there
 }
 
 func readFile() throws -> String {
