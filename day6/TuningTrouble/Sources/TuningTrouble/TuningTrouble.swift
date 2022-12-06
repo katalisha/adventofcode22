@@ -5,10 +5,10 @@ public enum Mode: Int {
     case message = 14
 }
 
-struct Packet {
-    let length: Int
-    var items: [Character]
-    var count: Int
+struct PacketReader {
+    private let length: Int
+    private var items: [Character]
+    private(set) var count: Int
     
     init(length: Int) {
         self.length = length
@@ -30,10 +30,6 @@ struct Packet {
         items.append(item)
         count += 1
     }
-    
-    func itemsPassed() -> Int {
-        return count
-    }
 }
 
 public func runFile(_ mode: Mode) -> Int {
@@ -43,14 +39,14 @@ public func runFile(_ mode: Mode) -> Int {
 
 public func findMarker(data: String, _ mode: Mode) -> Int {
     let packetLength = mode.rawValue
-    var q = Packet(length: packetLength)
+    var pr = PacketReader(length: packetLength)
     var result: Int? = nil
     
     _ = data.first { c in
-        q.add(item: c)
+        pr.add(item: c)
 
-        if q.count >= packetLength && !q.hasDupes() {
-            result = q.count
+        if pr.count >= packetLength && !pr.hasDupes() {
+            result = pr.count
             return true
         }
         return false
