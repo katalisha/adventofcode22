@@ -1,17 +1,17 @@
 import Foundation
 
-public func topElves(numberOfElves: Int) -> Int {
+public func topElves(_ elvesToReturn: Int) -> Int {
     let file = try! readFile()
     
-    return file.components(separatedBy: "\n\n")
-        .map { block in
-            let elfFood = breakBlockIntoArray(block: block)
-            return elfFood.reduce(0, +)
-        }
+    
+    let result = file.components(separatedBy: "\n\n")
+        .map(parseBlockToArray)
         .sorted()
         .reversed()
-        .prefix(through: numberOfElves - 1)
-        .reduce(0, +)
+        .prefix(through: elvesToReturn - 1)
+        .reduce(Int(0), +)
+    
+    return result
 }
 
 func readFile() throws -> String {
@@ -20,9 +20,11 @@ func readFile() throws -> String {
     return data
 }
 
-func breakBlockIntoArray(block: String) -> [Int] {
-    block.components(separatedBy: "\n")
-        .map {Int($0)}
-        .compactMap{$0}
+func parseBlockToArray(block: String) -> Int {
+    return block
+        .components(separatedBy: "\n")
+        .map {Int($0)}  // parse as int
+        .compactMap{$0} // remove nils
+        .reduce(0, +)   // sum
 }
 
