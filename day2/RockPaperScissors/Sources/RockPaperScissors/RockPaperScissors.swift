@@ -85,7 +85,7 @@ func process(data: String, fileFormat: FileFormat) -> Int {
     return data.components(separatedBy: "\n")
         .reduce(0) { partialResult, line in
             let game = line.components(separatedBy: " ")
-            let score = (fileFormat == .generateResult) ? twoSignScore(game: game) : resultBasedScore(game: game)
+            let score = score(game: game, scoringType: fileFormat)
             
             if let score = score {
                 return partialResult + score
@@ -97,25 +97,26 @@ func process(data: String, fileFormat: FileFormat) -> Int {
         }
 }
 
-func twoSignScore(game: [String]) -> Int? {
+func score(game: [String], scoringType: FileFormat) -> Int? {
+    var resultScore: any RawRepresentable<Int>
+    var signScore: any RawRepresentable<Int>
+    
     guard game.count == 2 else { return nil }
     guard let opp = Sign(value: game[0]) else { return nil }
     
-    guard let me = Sign(value: game[1]) else { return nil }
-    let result = GameLogic().result(opponent: opp, me: me)
-    
-    return result.rawValue + me.rawValue
+    switch(scoringType) {
+        case .generateResult:
+        guard let sign = Sign(value: game[1]) else { return nil }
+            resultScore = GameLogic().result(opponent: opp, me: sign)
+            signScore = sign
+        case .generateSign:
+            guard let result = Result(value: game[1]) else { return nil }
+            resultScore = result
+            signScore = GameLogic().sign(opponent: opp, result: result)
+    }
+    return resultScore.rawValue + signScore.rawValue
 }
 
-func resultBasedScore(game: [String]) -> Int? {
-    guard game.count == 2 else { return nil }
-    guard let opp = Sign(value: game[0]) else { return nil }
-    
-    guard let result = Result(value: game[1]) else { return nil }
-    let me = GameLogic().sign(opponent: opp, result: result)
-    
-    return result.rawValue + me.rawValue
-}
 
 func readFile() throws -> String {
     let path = Bundle.module.url(forResource: "input", withExtension: "txt")
