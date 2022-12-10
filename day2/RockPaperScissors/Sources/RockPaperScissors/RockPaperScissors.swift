@@ -5,7 +5,11 @@ public enum FileFormat {
     case generateSign
 }
 
-enum Sign: Int, CaseIterable {
+protocol GameElement {
+    func score(opp: Sign) -> Int
+}
+
+enum Sign: Int, CaseIterable, GameElement {
     case rock = 1
     case paper = 2
     case scissors = 3
@@ -22,9 +26,14 @@ enum Sign: Int, CaseIterable {
             return nil
         }
     }
+    
+    func score(opp: Sign) -> Int {
+        let result = GameLogic().result(opponent: opp, me: self)
+        return self.rawValue + result.rawValue
+    }
 }
 
-enum Result: Int, CaseIterable {
+enum Result: Int, CaseIterable, GameElement {
     case win = 6
     case draw = 3
     case loss = 0
@@ -40,6 +49,11 @@ enum Result: Int, CaseIterable {
         default:
             return nil
         }
+    }
+    
+    func score(opp: Sign) -> Int {
+        let sign = GameLogic().sign(opponent: opp, result: self)
+        return sign.rawValue + self.rawValue
     }
 }
 
@@ -77,7 +91,6 @@ struct GameLogic {
 
 public func score(fileFormat: FileFormat) -> Int {
     let file = try! readFile()
-    
     return process(data: file, fileFormat: fileFormat)
 }
 
@@ -85,38 +98,26 @@ func process(data: String, fileFormat: FileFormat) -> Int {
     return data.components(separatedBy: "\n")
         .reduce(0) { partialResult, line in
             let game = line.components(separatedBy: " ")
-            let score = score(game: game, scoringType: fileFormat)
-            
-            if let score = score {
-                return partialResult + score
-            }
-            else
-            {
-                return partialResult
-            }
+            let score = score(game: game, fileFormat: fileFormat)
+            return partialResult + (score ?? 0)
         }
 }
 
-func score(game: [String], scoringType: FileFormat) -> Int? {
-    var resultScore: any RawRepresentable<Int>
-    var signScore: any RawRepresentable<Int>
-    
+func score(game: [String], fileFormat: FileFormat) -> Int? {
     guard game.count == 2 else { return nil }
     guard let opp = Sign(value: game[0]) else { return nil }
-    
-    switch(scoringType) {
-        case .generateResult:
-        guard let sign = Sign(value: game[1]) else { return nil }
-            resultScore = GameLogic().result(opponent: opp, me: sign)
-            signScore = sign
-        case .generateSign:
-            guard let result = Result(value: game[1]) else { return nil }
-            resultScore = result
-            signScore = GameLogic().sign(opponent: opp, result: result)
-    }
-    return resultScore.rawValue + signScore.rawValue
+    let gameElement = parse(game[1], fileFormat: fileFormat)
+    return gameElement?.score(opp: opp)
 }
 
+func parse(_ string: String, fileFormat: FileFormat) -> GameElement? {
+    switch(fileFormat) {
+        case .generateResult:
+            return Sign(value: string)
+        case .generateSign:
+            return Result(value: string)
+    }
+}
 
 func readFile() throws -> String {
     let path = Bundle.module.url(forResource: "input", withExtension: "txt")
