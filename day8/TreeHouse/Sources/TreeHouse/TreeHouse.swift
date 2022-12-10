@@ -27,7 +27,13 @@ public func runFile(mode: Mode) -> Int {
 public func processData(data: String, mode: Mode) -> Int {
     let grid = createGrid(data: data)
     let result = iterateGrid(grid: grid)
-    return (mode == .totalVisible) ? result.totalVisible : result.maxViewingDistance
+    
+    switch mode {
+    case .maxViewingDistance:
+        return result.maxViewingDistance
+    case .totalVisible:
+        return result.totalVisible
+    }
 }
 
 func createGrid(data: String) -> [[Int]] {
@@ -48,15 +54,15 @@ func createGrid(data: String) -> [[Int]] {
 }
 
 func iterateGrid(grid: [[Int]]) -> Result {
-    var total: Int = 0
-    var maxViewingDistance = 0
+    var totalVisible: Int = 0
+    var maxViewingDistance: Int = 0
     
     for (i, row) in grid.enumerated() {
         for (j, _) in row.enumerated() {
             let treeData = treeData(i: i, j: j, grid: grid)
             
             if treeData.isVisible {
-                total += 1
+                totalVisible += 1
             }
             
             if treeData.viewingDistance > maxViewingDistance {
@@ -64,7 +70,7 @@ func iterateGrid(grid: [[Int]]) -> Result {
             }
         }
     }
-    return Result(totalVisible: total, maxViewingDistance: maxViewingDistance)
+    return Result(totalVisible: totalVisible, maxViewingDistance: maxViewingDistance)
 }
 
 func treeData(i: Int, j: Int, grid: [[Int]]) -> Tree {
@@ -75,16 +81,19 @@ func treeData(i: Int, j: Int, grid: [[Int]]) -> Tree {
     let tree = grid[i][j]
         
     let north = checkDirection(tree: tree, j: j, otherTrees: grid[0..<i].reversed())
-    let east = checkDirection(tree: tree, j: j, otherTrees: Array(grid[i][j+1..<grid.count]))   // hmmm
-    let south = checkDirection(tree: tree, j: j, otherTrees: Array(grid[i+1..<grid.count]))     // hmmm
     let west = checkDirection(tree: tree, j: j, otherTrees: grid[i][0..<j].reversed())
+
+    // hmmm can't get generic type working with wrapping slice in array
+    let east = checkDirection(tree: tree, j: j, otherTrees: Array(grid[i][j+1..<grid.count]))
+    let south = checkDirection(tree: tree, j: j, otherTrees: Array(grid[i+1..<grid.count]))
     
     return Tree(isVisible: north.isVisible || south.isVisible || east.isVisible || west.isVisible,
                          viewingDistance: north.viewingDistance * south.viewingDistance * east.viewingDistance * west.viewingDistance)
     
 }
 
-func checkDirection(tree: Int, j: Int, otherTrees: some Collection<TreeGettable>) -> Tree {
+// tried some Collection<TreeGettable> to allow ArraySlice did not work
+func checkDirection(tree: Int, j: Int, otherTrees: [TreeGettable]) -> Tree {
     for (index, otherTreePosition) in otherTrees.enumerated() {
         if otherTreePosition.getTree(j: j)! >= tree {
             return Tree(isVisible: false, viewingDistance: index + 1)
@@ -97,6 +106,18 @@ func readFile() throws -> String {
     let path = Bundle.module.url(forResource: "input", withExtension: "txt")
     let data = try String(contentsOf: path!)
     return data
+}
+
+extension Int : TreeGettable {
+    func getTree(j: Int) -> Int? {
+        return self
+    }
+}
+
+extension [Int] : TreeGettable {
+    func getTree(j: Int) -> Int? {
+        return self[j]
+    }
 }
 
 fileprivate extension Array<Array<Int>> {
@@ -118,17 +139,5 @@ fileprivate extension Array<Array<Int>> {
     
     func rowLength(row: Int) -> Int {
         return self[row].count
-    }
-}
-
-extension Int : TreeGettable {
-    func getTree(j: Int) -> Int? {
-        return self
-    }
-}
-
-extension [Int] : TreeGettable {
-    func getTree(j: Int) -> Int? {
-        return self[j]
     }
 }
