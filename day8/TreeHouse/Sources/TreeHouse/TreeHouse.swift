@@ -83,16 +83,15 @@ func treeData(i: Int, j: Int, grid: [[Int]]) -> Tree {
     let north = checkDirection(tree: tree, j: j, otherTrees: grid[0..<i].reversed())
     let west = checkDirection(tree: tree, j: j, otherTrees: grid[i][0..<j].reversed())
 
-    // hmmm can't get generic type working with wrapping slice in array
+    /* TODO: get generic type working array slice rather than wrapping the slice in an array
+     * tried `some Collection<TreeGettable>` to allow ArraySlice in checkDirection - it did not work */
     let east = checkDirection(tree: tree, j: j, otherTrees: Array(grid[i][j+1..<grid.count]))
     let south = checkDirection(tree: tree, j: j, otherTrees: Array(grid[i+1..<grid.count]))
     
     return Tree(isVisible: north.isVisible || south.isVisible || east.isVisible || west.isVisible,
                          viewingDistance: north.viewingDistance * south.viewingDistance * east.viewingDistance * west.viewingDistance)
-    
 }
 
-// tried some Collection<TreeGettable> to allow ArraySlice did not work
 func checkDirection(tree: Int, j: Int, otherTrees: [TreeGettable]) -> Tree {
     for (index, otherTreePosition) in otherTrees.enumerated() {
         if otherTreePosition.getTree(j: j)! >= tree {
