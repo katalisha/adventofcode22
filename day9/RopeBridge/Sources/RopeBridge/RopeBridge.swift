@@ -4,24 +4,19 @@ import RegexBuilder
 struct Point: Hashable {
     var x: Int
     var y: Int
-}
-
-typealias Rope = [Section]
-
-struct Section: Equatable {
-    let head: Point
-    let tail: Point
+    
+    init(x: Int, y: Int) {
+        self.x = x
+        self.y = y
+    }
     
     init() {
-        head = Point(x: 0, y: 0)
-        tail = Point(x: 0, y: 0)
-    }
-    
-    init(head: Point, tail: Point) {
-        self.head = head
-        self.tail = tail
+        self.x = 0
+        self.y = 0
     }
 }
+
+typealias Rope = [Point]
 
 struct Move {
     let direction: Direction
@@ -36,14 +31,14 @@ enum Direction: String {
 }
 
 @available(macOS 13.0, *)
-public func runFile(sections: Int) -> Int {
+public func runFile(knots: Int) -> Int {
     let data = try! readFile()
-    return processData(data: data, sections: sections)
+    return processData(data: data, knots: knots)
 }
 
 @available(macOS 13.0, *)
-func processData(data: String, sections: Int) -> Int {
-    var rope = Rope(repeating: Section(), count: sections)
+func processData(data: String, knots: Int) -> Int {
+    var rope = Rope(repeating: Point(), count: knots)
     
     let locationTally = data.components(separatedBy: "\n")
         .reduce(into: [Point(x: 0, y: 0): 1]) { tally, line in
@@ -51,21 +46,19 @@ func processData(data: String, sections: Int) -> Int {
             if let move = parseLine(line: line) {
                 for _ in 1...move.distance {
                     
-                    var previousTail: Point?
+                    var previousKnot: Point?
                     
-                    rope = rope.map { section in
-                        guard let tailValue = previousTail else {
-                            let newHead = moveHead(direction: move.direction, currentPosition: section.head)
-                            let newTail = moveTail(newHead: newHead, currentPosition: section.tail)
-                            previousTail = newTail
-                            return Section(head: newHead, tail: newTail)
+                    rope = rope.map { currentPosition in
+                        guard let head = previousKnot else {
+                            let newPosition = moveHead(direction: move.direction, currentPosition: currentPosition)
+                            previousKnot = newPosition
+                            return newPosition
                         }
-                        let newHead = tailValue
-                        let newTail = moveTail(newHead: newHead, currentPosition: section.tail)
-                        previousTail = newTail
-                        return Section(head: newHead, tail: newTail)
+                        let newTail = moveTail(newHead: head, currentPosition: currentPosition)
+                        previousKnot = newTail
+                        return newTail
                     }
-                    tally[rope.last!.tail, default: 0] += 1
+                    tally[rope.last!, default: 0] += 1
                 }
             }
         }
