@@ -26,14 +26,14 @@ struct Command {
 struct State {
     private (set) var cycle: Int
     private (set) var registerX: Int
-    var command: Command
     private (set) var signalSum: Int = 0
+    private (set) var output: String = ""
+    var command: Command
     var currentPixel: Int {
         get {
             return ((cycle - 1) % 40)
         }
     }
-    private (set) var output: String = ""
     
     init() {
         self.cycle = 1
@@ -48,10 +48,10 @@ struct State {
         command.running = false
         
         switch command.instruction {
-        case .noop:
-            break
-        case let .addx(i):
-            registerX += i
+            case .noop:
+                break
+            case let .addx(i):
+                registerX += i
         }
     }
     
