@@ -8,7 +8,7 @@ enum Instruction {
 
 struct Command {
     let instruction: Instruction
-    var inCycles: Int
+    var cyclesRemaining: Int
     var running = true
     
     init(instruction: Instruction) {
@@ -16,9 +16,9 @@ struct Command {
         
         switch instruction {
         case .noop:
-            self.inCycles = 0
+            self.cyclesRemaining = 0
         case .addx(_):
-            self.inCycles = 1
+            self.cyclesRemaining = 1
         }
     }
 }
@@ -33,17 +33,17 @@ struct State {
             return ((cycle - 1) % 40)
         }
     }
+    private (set) var output: String = ""
     
     init() {
         self.cycle = 1
         self.registerX = 1
         self.command = Command(instruction: .noop)
         self.command.running = false
-        draw()
     }
     
     mutating func executeCommand() {
-        guard command.inCycles == 0 else { command.inCycles -= 1; return }
+        guard command.cyclesRemaining == 0 else { command.cyclesRemaining -= 1; return }
         
         command.running = false
         
@@ -55,22 +55,25 @@ struct State {
         }
     }
     
+    mutating func startCycle() {
+        draw()
+    }
+    
     mutating func endCycle() {
         cycle += 1
-        draw()
         updateSignalSum()
     }
     
-    private func draw() {
+    private mutating func draw() {
         if currentPixel <= registerX + 1 &&
             currentPixel >= registerX - 1 {
-            print("#", terminator: "")
+            output.append("#")
         } else {
-            print(".", terminator: "")
+            output.append(".")
 
         }
         if cycle % 40 == 0 {
-            print()
+            output.append("\n")
         }
     }
     
@@ -82,13 +85,21 @@ struct State {
 }
 
 @available(macOS 13.0, *)
-public func runFile() -> Int {
-    let data = try! readFile()
-    return processData(data: data)
+public func signalStrength(data: String?) -> Int {
+    let data = try! data ?? readFile()
+    let state = processData(data: data)
+    return state.signalSum
 }
 
 @available(macOS 13.0, *)
-public func processData(data: String) -> Int {
+public func output(data: String?) -> String {
+    let data = try! data ?? readFile()
+    let state = processData(data: data)
+    return state.output
+}
+
+@available(macOS 13.0, *)
+func processData(data: String) -> State {
     var lines = data.components(separatedBy: "\n").makeIterator()
     var state = State()
         
@@ -101,11 +112,11 @@ public func processData(data: String) -> Int {
                  break
              }
         }
-        
+        state.startCycle()
         state.executeCommand()
         state.endCycle()
     }
-    return state.signalSum
+    return state
 }
 
 @available(macOS 13.0, *)
