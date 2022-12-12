@@ -1,9 +1,26 @@
 import Foundation
 import RegexBuilder
 
-enum Command {
+enum Instruction {
     case noop
     case addx(Int)
+}
+
+struct Command {
+    let instruction: Instruction
+    var inCycles: Int
+    var running = true
+    
+    init(instruction: Instruction) {
+        self.instruction = instruction
+        
+        switch instruction {
+        case .noop:
+            self.inCycles = 0
+        case .addx(_):
+            self.inCycles = 1
+        }
+    }
 }
 
 @available(macOS 13.0, *)
@@ -16,33 +33,22 @@ public func runFile() -> Int {
 public func processData(data: String) -> Int {
     var lines = data.components(separatedBy: "\n").makeIterator()
     var cycle = 1
-    var executing: Command?
-    var commandCountDown = 0
+    var executing: Command!
     var x = 1
     var signalSum = 0
         
     while true {
-        if commandCountDown > 0 {
-            commandCountDown -= 1
-        } else if let line = lines.next(),
-                  let command = parseLine(line: line) {
-            commandCountDown = cyclesNeeded(command: command)
-            executing = command
-        } else {
-            break
+        
+        if executing?.running != true {
+            if let line = lines.next(),
+               let nextCommand = parseLine(line: line) {
+                executing = nextCommand
+             } else {
+                 break
+             }
         }
         
-
-        if let command = executing, commandCountDown == 0 {
-            switch command {
-            case .noop: break
-            case let .addx(i):
-                x += i
-                print("cycle: \(cycle) addx: \(i) x: \(x)" )
-
-            }
-            executing = nil
-        }
+        x = executeCommand(&executing, x: x)
 
         cycle += 1
 
@@ -53,6 +59,19 @@ public func processData(data: String) -> Int {
     }
     return signalSum
 }
+
+func executeCommand(_ command: inout Command, x: Int) -> Int {
+    guard command.inCycles == 0 else { command.inCycles -= 1; return x }
+    
+    command.running = false
+    switch command.instruction {
+    case .noop:
+        return x
+    case let .addx(i):
+        return x + i
+    }
+}
+
 
 @available(macOS 13.0, *)
 func parseLine(line: String) -> Command? {
@@ -74,9 +93,9 @@ func parseLine(line: String) -> Command? {
     if let matches = try? regex.wholeMatch(in: line) {
         switch matches.1 {
         case "noop":
-            return .noop
+            return Command(instruction: .noop)
         case "addx":
-            return .addx(matches.2!)
+            return Command(instruction: .addx(matches.2!))
         default:
             return nil
         }
@@ -84,14 +103,7 @@ func parseLine(line: String) -> Command? {
     return nil
 }
 
-func cyclesNeeded(command: Command) -> Int {
-    switch command {
-    case .noop:
-        return 0
-    case .addx(_):
-        return 1
-    }
-}
+
 
 func readFile() throws -> String {
     let path = Bundle.module.url(forResource: "input", withExtension: "txt")
