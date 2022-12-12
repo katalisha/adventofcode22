@@ -23,6 +23,64 @@ struct Command {
     }
 }
 
+struct State {
+    private (set) var cycle: Int
+    private (set) var registerX: Int
+    var command: Command
+    private (set) var signalSum: Int = 0
+    var currentPixel: Int {
+        get {
+            return ((cycle - 1) % 40)
+        }
+    }
+    
+    init() {
+        self.cycle = 1
+        self.registerX = 1
+        self.command = Command(instruction: .noop)
+        self.command.running = false
+        draw()
+    }
+    
+    mutating func executeCommand() {
+        guard command.inCycles == 0 else { command.inCycles -= 1; return }
+        
+        command.running = false
+        
+        switch command.instruction {
+        case .noop:
+            break
+        case let .addx(i):
+            registerX += i
+        }
+    }
+    
+    mutating func endCycle() {
+        cycle += 1
+        draw()
+        updateSignalSum()
+    }
+    
+    private func draw() {
+        if currentPixel <= registerX + 1 &&
+            currentPixel >= registerX - 1 {
+            print("#", terminator: "")
+        } else {
+            print(".", terminator: "")
+
+        }
+        if cycle % 40 == 0 {
+            print()
+        }
+    }
+    
+    private mutating func updateSignalSum() {
+        if cycle == 20 || ((cycle - 20) % 40) == 0 {
+            signalSum += cycle * registerX
+        }
+    }
+}
+
 @available(macOS 13.0, *)
 public func runFile() -> Int {
     let data = try! readFile()
@@ -32,46 +90,23 @@ public func runFile() -> Int {
 @available(macOS 13.0, *)
 public func processData(data: String) -> Int {
     var lines = data.components(separatedBy: "\n").makeIterator()
-    var cycle = 1
-    var executing: Command!
-    var x = 1
-    var signalSum = 0
+    var state = State()
         
     while true {
-        
-        if executing?.running != true {
+        if state.command.running != true {
             if let line = lines.next(),
                let nextCommand = parseLine(line: line) {
-                executing = nextCommand
+                state.command = nextCommand
              } else {
                  break
              }
         }
         
-        x = executeCommand(&executing, x: x)
-
-        cycle += 1
-
-        if cycle == 20 || ((cycle - 20) % 40) == 0 {
-            signalSum += cycle * x
-           print("cycle: \(cycle) x: \(x) = \(cycle * x)")
-        }
+        state.executeCommand()
+        state.endCycle()
     }
-    return signalSum
+    return state.signalSum
 }
-
-func executeCommand(_ command: inout Command, x: Int) -> Int {
-    guard command.inCycles == 0 else { command.inCycles -= 1; return x }
-    
-    command.running = false
-    switch command.instruction {
-    case .noop:
-        return x
-    case let .addx(i):
-        return x + i
-    }
-}
-
 
 @available(macOS 13.0, *)
 func parseLine(line: String) -> Command? {
@@ -102,8 +137,6 @@ func parseLine(line: String) -> Command? {
     }
     return nil
 }
-
-
 
 func readFile() throws -> String {
     let path = Bundle.module.url(forResource: "input", withExtension: "txt")
