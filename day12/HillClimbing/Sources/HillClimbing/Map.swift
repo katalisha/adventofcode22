@@ -1,7 +1,7 @@
 struct Map {
     let startLocation: Square
     let end: Square
-    var items: [[Square]]
+    let items: [[Square]]
     
     func availableMoves(from: Square) -> Set<Square> {
         return Direction.allCases.reduce(into: Set<Square>()) { partialResult, dir in
@@ -33,15 +33,17 @@ struct Map {
         
         let square = items[move.i][move.j]
         
-//        if square.visited {
-//            return nil
-//        }
-        
         // elevation different too great
         if square.elevation - currentLocation.elevation > 1 {
             return nil
         }
         
         return items[move.i][move.j]
+    }
+    
+    func groundLevel() -> [Square] {
+        return items.reduce([]) { partialResult, row in
+            return row.filter { $0.elevation == 0 } + partialResult
+        }
     }
 }

@@ -1,5 +1,4 @@
 struct Square {
-
     let elevation: Int
     let i: Int
     let j: Int

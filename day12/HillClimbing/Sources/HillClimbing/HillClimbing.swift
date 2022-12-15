@@ -1,25 +1,30 @@
 import Foundation
 
-func fileToPath() -> Int {
+enum Mode {
+    case fromStart
+    case fromAnyGround
+}
+
+func fileToPath(mode: Mode) -> Int {
     let data = try! readFile()
-    return path(data: data)
+    return path(data: data, mode: mode)
 }
 
-func path(data: String) -> Int {
+func path(data: String, mode: Mode) -> Int {
     let map = createMap(data: data)
-    return lengthOfShortestPath(map: map)
+    return lengthOfShortestPath(map: map, mode: mode)
 }
 
-func lengthOfShortestPath(map: Map) -> Int {
+func lengthOfShortestPath(map: Map, mode: Mode) -> Int {
     var counter = 0
     var end = false
-    var moves = Set([map.startLocation])
+    var movesAtDepth = (mode == .fromStart) ? Set([map.startLocation]) : Set(map.groundLevel())
     
     repeat
     {
-        (moves, end) = allPossibleMoves(paths: moves, map: map)
+        (movesAtDepth, end) = allPossibleMoves(paths: movesAtDepth, map: map)
         counter += 1
-    } while (moves.count > 0 && end == false)
+    } while (movesAtDepth.count > 0 && end == false)
     
     return counter
 }
@@ -55,7 +60,6 @@ func createMap(data: String) -> Map {
                     case "\n": partialResult.append([])
                     case "S":
                         let square = addSquare("a", to:lastRow)
-//                        square.visited = true
                         start = square
                     
                     case "E":
