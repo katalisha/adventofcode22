@@ -1,39 +1,31 @@
 import Foundation
 
-public enum Packet: Decodable, Comparable {
-    case integer(Int), list([Packet])
-    
-    public init(from decoder: Decoder) throws {
-        if let container = try? decoder.singleValueContainer(),
-           let integer = try? container.decode(Int.self) {
-            self = .integer(integer)
-        } else {
-            self = .list(try! [Packet](from: decoder))
-        }
-    }
-    
-    public static func < (lhs: Self, rhs: Self) -> Bool {
-        switch (lhs, rhs) {
-        case (.integer(let l), .integer(let r)): return l < r
-        case (.integer(_), .list(_)): return .list([lhs]) < rhs
-        case (.list(_), .integer(_)): return lhs < .list([rhs])
-        case (.list(let l), .list(let r)):
-            for (l, r) in zip(l, r) {
-                if l < r { return true }
-                if l > r { return false }
-                // if equal check next pair
-            }
-            return l.count < r.count
-        }
-    }
+enum Mode {
+    case sumIndiciesInOrder
+    case getDecoderKey
 }
 
-func runFile() -> Int {
+func runFile(mode: Mode) -> Int {
     let data = try! readFile()
-    return packets(data: data)
+    return (mode == .sumIndiciesInOrder) ? packetsInOrder(data: data) : decoderKey(data: data)
 }
 
-func packets(data: String) -> Int {
+func decoderKey(data: String) -> Int {
+    let dividerPackets =  [parsePacket(s: "[[2]]")!, parsePacket(s: "[[6]]")!]
+    
+    let message = (data.components(separatedBy: "\n")
+        .filter { !$0.isEmpty }
+        .compactMap{ parsePacket(s: $0)}
+        + dividerPackets)
+        .sorted()
+    
+    let index0 = message.firstIndex(of: dividerPackets[0])! + 1
+    let index1 = message.firstIndex(of: dividerPackets[1])! + 1
+    
+    return index0 * index1
+}
+
+func packetsInOrder(data: String) -> Int {
     return data.components(separatedBy: "\n\n")
         .enumerated()
         .reduce(0) { partialResult, pair in

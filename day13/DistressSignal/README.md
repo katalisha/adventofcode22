@@ -148,3 +148,7 @@ For the example above, the result of putting the packets in the correct order is
 Afterward, locate the divider packets. To find the decoder key for this distress signal, you need to determine the indices of the two divider packets and multiply them together. (The first packet is at index 1, the second packet is at index 2, and so on.) In this example, the divider packets are 10th and 14th, and so the decoder key is 140.
 
 Organize all of the packets into the correct order. What is the decoder key for the distress signal?
+
+Your puzzle answer was 20758.
+
+Both parts of this puzzle are complete! They provide two gold stars: **
