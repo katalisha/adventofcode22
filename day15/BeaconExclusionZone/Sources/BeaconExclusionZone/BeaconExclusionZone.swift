@@ -1,5 +1,10 @@
 import Foundation
 
+enum Mode {
+    case row(Int)
+    case grid(Int)
+}
+
 struct Coordinate: Hashable {
     let x: Int
     let y: Int
@@ -12,6 +17,19 @@ struct Beacon: Hashable {
 struct Sensor: Hashable {
     let position: Coordinate
     let range: Int
+    
+    func getEdges() -> Set<Coordinate> {
+        var edge = Set<Coordinate>()
+        let edgeDistance = range + 1
+        for x in (position.x - edgeDistance)...(position.x + edgeDistance) {
+            let below = position.y + edgeDistance - abs(position.x - x)
+            edge.insert(Coordinate(x: x, y: below))
+            
+            let above = position.y - edgeDistance - abs(position.x - x)
+            edge.insert(Coordinate(x: x, y: above))
+        }
+        return edge
+    }
 }
 
 struct GridBoundary {
@@ -27,6 +45,13 @@ struct GridBoundary {
         self.topCorner = Coordinate(x: coordinate.x - range, y: coordinate.y - range)
         self.bottomCorner = Coordinate(x: coordinate.x + range, y: coordinate.y + range)
     }
+    
+    func excludes(space: Coordinate) -> Bool {
+        return space.x < topCorner.x ||
+            space.x > bottomCorner.x ||
+            space.y < topCorner.y ||
+            space.y > bottomCorner.y
+    }
 }
 
 struct Grid {
@@ -35,33 +60,76 @@ struct Grid {
     let beacons: Set<Beacon>
 }
 
+// MARK: Functions
+
 @available(macOS 13.0, *)
-func runFile(row: Int) -> Int {
+func runFile(mode: Mode) -> Int {
     let data = try! readFile()
-    return countCoveredInRow(row, data: data)
+    return process(data: data, mode: mode)
 }
 
 @available(macOS 13.0, *)
-func countCoveredInRow(_ y: Int, data: String) -> Int {
+func process(data: String, mode: Mode) -> Int {
     let grid = parse(data: data)
+
+    switch mode {
+    case let .row(row):
+        return countCoveredInRow(row, grid: grid)
+    case let .grid(size):
+        return tuningFrequency(size: size, grid: grid)
+    }
+}
+
+// MARK: Coverage
+
+func tuningFrequency(size: Int, grid: Grid) -> Int {
+    let c = 4000000
+    let beaconZone = GridBoundary(topCorner: Coordinate(x: 0, y: 0), bottomCorner: Coordinate(x: size, y: size))
+    
+    for sensor in grid.sensors {
+        for space in sensor.getEdges() {
+            if beaconZone.excludes(space: space) {
+                continue
+            }
+            
+            if !isGridSpaceCovered(space: space, sensors: grid.sensors) {
+                return c * space.x + space.y
+            }
+        }
+    }
+    return 0
+}
+
+@available(macOS 13.0, *)
+func countCoveredInRow(_ y: Int, grid: Grid) -> Int {
     var count = 0
     
     for x in grid.boundary.topCorner.x...grid.boundary.bottomCorner.x {
-        // exclude beacons
-        if let _ = grid.beacons.first(where: { b in
-            b.position.x == x && b.position.y == y
-        }) { continue }
+        let space = Coordinate(x: x, y: y)
+
+        if let _ = grid.beacons.first(where: { $0.position == space}) {
+            continue
+        }
         
-        // check for sensor coverage
-        if let _ = grid.sensors.first(where: { s in
-            let verticalDistance = abs(s.position.y - y)
-            let horizontalDistance = abs(s.position.x - x)
-            let rangeAtDistance = s.range - verticalDistance
-            return horizontalDistance <= rangeAtDistance
-        }) { count += 1 }
+        if isGridSpaceCovered(space: space, sensors: grid.sensors) {
+            count += 1
+        }
     }
     return count
 }
+
+func isGridSpaceCovered(space: Coordinate, sensors: Set<Sensor>) -> Bool {
+    if let _ = sensors.first(where: { s in
+        let verticalDistance = abs(s.position.y - space.y)
+        let horizontalDistance = abs(s.position.x - space.x)
+        let rangeAtDistance = s.range - verticalDistance
+        return horizontalDistance <= rangeAtDistance
+    }) { return true }
+    
+    return false
+}
+
+// MARK: Parsing
 
 @available(macOS 13.0, *)
 func parse(data: String) -> Grid {
@@ -81,26 +149,26 @@ func parse(data: String) -> Grid {
 func calculateBoundary(sensors: Set<Sensor>, beacons: Set<Beacon>) -> GridBoundary? {
     let sensorResult: GridBoundary? = sensors.reduce(nil) { partialResult, sensor in
         let potentialBoundary = GridBoundary(coordinate: sensor.position, range: sensor.range)
-        return generateEdges(currentBoundary: partialResult, newBoundary: potentialBoundary)
+        return findFurthestBoundary(currentBoundary: partialResult, potentialBoundary: potentialBoundary)
     }
     
     let completeResult: GridBoundary? = beacons.reduce(sensorResult) { partialResult, beacon in
         let potentialBoundary = GridBoundary(coordinate: beacon.position, range: 0)
-        return generateEdges(currentBoundary: partialResult, newBoundary: potentialBoundary)
+        return findFurthestBoundary(currentBoundary: partialResult, potentialBoundary: potentialBoundary)
     }
     return completeResult
 }
 
-func generateEdges(currentBoundary: GridBoundary?, newBoundary: GridBoundary) -> GridBoundary {
+func findFurthestBoundary(currentBoundary: GridBoundary?, potentialBoundary: GridBoundary) -> GridBoundary {
     guard let currentMin = currentBoundary?.topCorner,
           let currentMax = currentBoundary?.bottomCorner else {
-        return GridBoundary(topCorner: newBoundary.topCorner, bottomCorner: newBoundary.bottomCorner)
+        return GridBoundary(topCorner: potentialBoundary.topCorner, bottomCorner: potentialBoundary.bottomCorner)
     }
     
-    let minX = min(currentMin.x, newBoundary.topCorner.x)
-    let maxX = max(currentMax.x, newBoundary.bottomCorner.x)
-    let minY = min(currentMin.y, newBoundary.topCorner.y)
-    let maxY = max(currentMax.y, newBoundary.bottomCorner.y)
+    let minX = min(currentMin.x, potentialBoundary.topCorner.x)
+    let maxX = max(currentMax.x, potentialBoundary.bottomCorner.x)
+    let minY = min(currentMin.y, potentialBoundary.topCorner.y)
+    let maxY = max(currentMax.y, potentialBoundary.bottomCorner.y)
     
     return GridBoundary(topCorner: Coordinate(x: minX, y: minY), bottomCorner: Coordinate(x: maxX, y: maxY))
 }
