@@ -1,13 +1,22 @@
 import Foundation
 
-struct Valve: Hashable {
+typealias Scan = Dictionary<String, ScanLine>
+typealias Cave = Dictionary<String, Valve>
+ 
+struct ScanLine: Hashable {
     let flowRate: Int
     let name: String
     let neighbours: [String]
+}
+
+struct Valve: Hashable {
+    let flowRate: Int
+    let name: String
+    let tunnels: Set<Tunnel>
     var open = false
 }
 
-struct Tunnel: CustomStringConvertible {
+struct Tunnel: CustomStringConvertible, Hashable {
     let endValve: String
     let distance: Int
     
@@ -17,35 +26,24 @@ struct Tunnel: CustomStringConvertible {
 }
 
 struct State {
-    var valves: Set<Valve>
-    let minute: Int
-    let pressureReleased: Int
+    var cave: Cave
+    var minute: Int
+    var pressureReleased: Int
     var currentPosition: String
     
-    func tick() -> State {
-        return State(valves: valves,
-                     minute: minute + 1,
-                     pressureReleased: pressureReleased + valves.reduce(0, { $0 + (($1.open) ? $1.flowRate : 0)}),
-                     currentPosition: currentPosition)
+    mutating func tick() {
+        minute += 1
+        pressureReleased += cave.reduce(0, { $0 + (($1.value.open) ? $1.value.flowRate : 0)})
     }
     
-    func opening(valveName: String) -> State {
-        var valve = valves.first(where: {$0.name == valveName})!
-        var tempValves = valves.subtracting(Set([valve]))
-        valve.open = true
-        tempValves.insert(valve)
-
-        return State(valves: tempValves,
-                     minute: minute,
-                     pressureReleased: pressureReleased,
-                     currentPosition: currentPosition)
+    mutating func opening(valveName: String) {
+        cave[valveName]!.open = true
+        // tick
     }
 
-    func movingTo(valveName: String) -> State {
-        return State(valves: valves,
-                     minute: minute,
-                     pressureReleased: pressureReleased,
-                     currentPosition: valveName)
+    mutating func movingTo(valveName: String) {
+        currentPosition = valveName
+        // todo tick for distance
     }
 }
 
@@ -62,9 +60,10 @@ func achieveMaximumFlow(data: String) -> Int {
     let valves = data.components(separatedBy: "\n")
         .compactMap { parseLine(line: $0) }
     
-    let state = State(valves: Set(valves), minute: 0, pressureReleased: 0, currentPosition: "AA")
+    let cave = buildCave(originId: "AA", valves: Dictionary(uniqueKeysWithValues: valves))
     
-    let cave = buildCave(originId: "AA", valves: state.valves)
+    let _ = State(cave: cave, minute: 0, pressureReleased: 0, currentPosition: "AA")
+
     
     print(cave)
     return 0
@@ -73,50 +72,58 @@ func achieveMaximumFlow(data: String) -> Int {
 
 // MARK: Pathfinding
 
-func buildCave(originId: String, valves: Set<Valve>) -> Dictionary<String, Array<Tunnel>> {
+func buildCave(originId: String, valves: Scan) -> Cave {
     return Dictionary(uniqueKeysWithValues: valves
-        .filter{ $0.name == originId || $0.flowRate > 0}
-        .map { ($0.name, visitNeighbours(neighbours: [$0],
-                                         distance: 0,
-                                         visited: [],
-                                         allValves: valves,
-                                         tunnels: [])) }
+        .filter{ $0.key == originId || $0.value.flowRate > 0}
+        .map { ($0.value.name,
+                Valve(
+                    flowRate: $0.value.flowRate,
+                    name: $0.key,
+                    tunnels: visitNeighbours(
+                        neighbours: [$0.value.name],
+                        distance: 0,
+                        visited: [],
+                        allValves: valves,
+                        tunnels: []
+                    )
+                )
+            )
+        }
     )
 }
 
-func visitNeighbours(neighbours: Set<Valve>, distance: Int, visited: Set<Valve>, allValves: Set<Valve>, tunnels: [Tunnel]) -> [Tunnel] {
-    let possibleEndpoints = neighbours.subtracting(visited)
-    guard !possibleEndpoints.isEmpty else { return tunnels }
-  
+func visitNeighbours(neighbours: Set<String>, distance: Int, visited: Set<String>, allValves: Scan, tunnels: Set<Tunnel>) -> Set<Tunnel> {
+    let unvistedNeighbourValves = neighbours
+        .subtracting(visited)
+        .compactMap { allValves[$0] }
+
+    guard !unvistedNeighbourValves.isEmpty else { return tunnels }
+
     let newTunnels = (distance == 0) ? [] :
-        possibleEndpoints
+        unvistedNeighbourValves
             .filter{ $0.flowRate > 0 }
             .map{ Tunnel(endValve: $0.name, distance: distance)}
     
-    let nextNeighbourIds = possibleEndpoints.flatMap { $0.neighbours }
-    
-    let nextNeighbours = Set(nextNeighbourIds.compactMap { s in
-        allValves.first { v in
-            v.name == s
-        }
-    })
-    
-    return visitNeighbours(neighbours: nextNeighbours,
+    let nextNeighbourIds = unvistedNeighbourValves.flatMap { $0.neighbours }
+
+    return visitNeighbours(neighbours: Set(nextNeighbourIds),
                         distance: distance + 1,
-                        visited: visited.union(possibleEndpoints),
+                        visited: visited.union(neighbours),
                         allValves: allValves,
-                        tunnels: tunnels + newTunnels)
+                        tunnels: tunnels.union(newTunnels))
 }
 
 // MARK: Parsing
 
 @available(macOS 13.0, *)
-func parseLine(line: String) -> Valve? {
+func parseLine(line: String) -> (String, ScanLine)? {
     let regex = #/Valve ([A-Z]{2}) has flow rate=(\d+); tunnels? leads? to valves? ((?:[A-Z]{2},?\s?)+)/#
     guard let match = line.wholeMatch(of: regex) else { return nil }
     let neighbours = match.3.components(separatedBy: ", ")
+    let name = String(match.1)
+    let flowRate = Int(match.2)!
     
-    return Valve(flowRate: Int(match.2)!, name: String(match.1), neighbours: neighbours)
+    return (name, ScanLine(flowRate: flowRate, name: name, neighbours: neighbours))
 }
 
 func readFile() throws -> String {
