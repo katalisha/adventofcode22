@@ -60,9 +60,11 @@ func achieveMaximumFlow(data: String) -> Int {
     let valves = data.components(separatedBy: "\n")
         .compactMap { parseLine(line: $0) }
     
-    let cave = buildCave(originId: "AA", valves: Dictionary(uniqueKeysWithValues: valves))
+    let originName = "AA"
     
-    let _ = State(cave: cave, minute: 0, pressureReleased: 0, currentPosition: "AA")
+    let cave = buildCave(originName: originName, valves: Dictionary(uniqueKeysWithValues: valves))
+    
+    let _ = State(cave: cave, minute: 0, pressureReleased: 0, currentPosition: originName)
 
     
     print(cave)
@@ -72,17 +74,17 @@ func achieveMaximumFlow(data: String) -> Int {
 
 // MARK: Pathfinding
 
-func buildCave(originId: String, valves: Scan) -> Cave {
+func buildCave(originName: String, valves: Scan) -> Cave {
     return Dictionary(uniqueKeysWithValues: valves
-        .filter{ $0.key == originId || $0.value.flowRate > 0}
+        .filter{ $0.key == originName || $0.value.flowRate > 0}
         .map { ($0.value.name,
                 Valve(
                     flowRate: $0.value.flowRate,
                     name: $0.key,
                     tunnels: visitNeighbours(
-                        neighbours: [$0.value.name],
+                        neighbourNames: [$0.value.name],
                         distance: 0,
-                        visited: [],
+                        visitedNames: [],
                         allValves: valves,
                         tunnels: []
                     )
@@ -92,9 +94,9 @@ func buildCave(originId: String, valves: Scan) -> Cave {
     )
 }
 
-func visitNeighbours(neighbours: Set<String>, distance: Int, visited: Set<String>, allValves: Scan, tunnels: Set<Tunnel>) -> Set<Tunnel> {
-    let unvistedNeighbourValves = neighbours
-        .subtracting(visited)
+func visitNeighbours(neighbourNames: Set<String>, distance: Int, visitedNames: Set<String>, allValves: Scan, tunnels: Set<Tunnel>) -> Set<Tunnel> {
+    let unvistedNeighbourValves = neighbourNames
+        .subtracting(visitedNames)
         .compactMap { allValves[$0] }
 
     guard !unvistedNeighbourValves.isEmpty else { return tunnels }
@@ -104,11 +106,11 @@ func visitNeighbours(neighbours: Set<String>, distance: Int, visited: Set<String
             .filter{ $0.flowRate > 0 }
             .map{ Tunnel(endValve: $0.name, distance: distance)}
     
-    let nextNeighbourIds = unvistedNeighbourValves.flatMap { $0.neighbours }
+    let nextNeighbourNames = unvistedNeighbourValves.flatMap { $0.neighbours }
 
-    return visitNeighbours(neighbours: Set(nextNeighbourIds),
+    return visitNeighbours(neighbourNames: Set(nextNeighbourNames),
                         distance: distance + 1,
-                        visited: visited.union(neighbours),
+                        visitedNames: visitedNames.union(neighbourNames),
                         allValves: allValves,
                         tunnels: tunnels.union(newTunnels))
 }

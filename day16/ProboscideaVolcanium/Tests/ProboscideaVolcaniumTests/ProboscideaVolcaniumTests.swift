@@ -33,7 +33,7 @@ final class ProboscideaVolcaniumTests: XCTestCase {
             "JJ": ScanLine(flowRate: 21, name: "JJ", neighbours: ["II"])
 ]
 
-        XCTAssertEqual(buildCave(originId: "AA", valves: sampleData),
+        XCTAssertEqual(buildCave(originName: "AA", valves: sampleData),
             ["EE": Valve(flowRate: 3, name: "EE", tunnels: [
                     Tunnel(endValve: "DD", distance: 1),
                     Tunnel(endValve: "CC", distance: 2),
