@@ -30,9 +30,6 @@ struct Tunnel: CustomStringConvertible, Hashable {
 }
 
 struct State {
-    
-    var orderStack = ["CC", "EE", "HH", "JJ", "BB", "DD"]
-    
     let maxTime = 30
     private(set) var cave: Cave
     private(set) var minute: Int
@@ -42,29 +39,22 @@ struct State {
         get { cave[currentPosition]! }
     }
     
-    mutating func tick() throws {
+    private mutating func tick() throws {
         minute += 1
         if minute > 30 {
             throw VolcanoError.outOfTime
         }
-        
-        print("== Minute \(minute) ==")
         let pressureReleased = cave.reduce(0, { $0 + (($1.value.open) ? $1.value.flowRate : 0)})
-        print("releasing \(pressureReleased)")
-
         totalPressureReleased += pressureReleased
     }
     
-    mutating func opening(valveName: String) throws {
+    private mutating func opening(valveName: String) throws {
         guard (valveName == currentPosition && currentValve.open == false) else { return }
         try tick()
         cave[valveName]!.open = true
-        print("Open \(valveName)")
-        print()
     }
 
-    mutating func movingTo(valveName: String) throws {
-
+    private mutating func movingTo(valveName: String) throws {
         let tunnelTaken = currentValve.tunnels.first(where: { $0.endValve == valveName })!
 
         for _ in 0..<tunnelTaken.distance {
@@ -75,8 +65,8 @@ struct State {
         currentPosition = valveName
     }
     
-    mutating func nextBestMove() throws {
-        if let next = orderStack.popLast() {
+    mutating func moveAndOpen(valve: String?) throws {
+        if let next = valve {
             try movingTo(valveName: next)
             try opening(valveName: next)
         } else {
@@ -100,16 +90,10 @@ func achieveMaximumFlow(data: String) -> Int {
     
     let originName = "AA"
     let cave = buildCave(originName: originName, valves: Dictionary(uniqueKeysWithValues: valves))
+    print(cave)
     var state = State(cave: cave, minute: 0, totalPressureReleased: 0, currentPosition: originName)
     
-    while(true) {
-        do {
-            try state.nextBestMove()
-        }
-        catch {
-            return state.totalPressureReleased
-        }
-    }
+    return 0
 }
 
 
