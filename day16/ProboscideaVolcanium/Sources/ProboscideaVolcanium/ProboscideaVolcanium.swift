@@ -3,6 +3,10 @@ import Foundation
 typealias Scan = Dictionary<String, ScanLine>
 typealias Cave = Dictionary<String, Valve>
  
+enum VolcanoError: Error {
+    case outOfTime
+}
+
 struct ScanLine: Hashable {
     let flowRate: Int
     let name: String
@@ -26,24 +30,58 @@ struct Tunnel: CustomStringConvertible, Hashable {
 }
 
 struct State {
-    var cave: Cave
-    var minute: Int
-    var pressureReleased: Int
-    var currentPosition: String
     
-    mutating func tick() {
-        minute += 1
-        pressureReleased += cave.reduce(0, { $0 + (($1.value.open) ? $1.value.flowRate : 0)})
+    var orderStack = ["CC", "EE", "HH", "JJ", "BB", "DD"]
+    
+    let maxTime = 30
+    private(set) var cave: Cave
+    private(set) var minute: Int
+    private(set) var totalPressureReleased: Int
+    private(set) var currentPosition: String
+    var currentValve: Valve {
+        get { cave[currentPosition]! }
     }
     
-    mutating func opening(valveName: String) {
+    mutating func tick() throws {
+        minute += 1
+        if minute > 30 {
+            throw VolcanoError.outOfTime
+        }
+        
+        print("== Minute \(minute) ==")
+        let pressureReleased = cave.reduce(0, { $0 + (($1.value.open) ? $1.value.flowRate : 0)})
+        print("releasing \(pressureReleased)")
+
+        totalPressureReleased += pressureReleased
+    }
+    
+    mutating func opening(valveName: String) throws {
+        guard (valveName == currentPosition && currentValve.open == false) else { return }
+        try tick()
         cave[valveName]!.open = true
-        // tick
+        print("Open \(valveName)")
+        print()
     }
 
-    mutating func movingTo(valveName: String) {
+    mutating func movingTo(valveName: String) throws {
+
+        let tunnelTaken = currentValve.tunnels.first(where: { $0.endValve == valveName })!
+
+        for _ in 0..<tunnelTaken.distance {
+            try tick()
+            print("Moving to valve \(valveName)")
+            print()
+        }
         currentPosition = valveName
-        // todo tick for distance
+    }
+    
+    mutating func nextBestMove() throws {
+        if let next = orderStack.popLast() {
+            try movingTo(valveName: next)
+            try opening(valveName: next)
+        } else {
+            try tick()
+        }
     }
 }
 
@@ -61,14 +99,17 @@ func achieveMaximumFlow(data: String) -> Int {
         .compactMap { parseLine(line: $0) }
     
     let originName = "AA"
-    
     let cave = buildCave(originName: originName, valves: Dictionary(uniqueKeysWithValues: valves))
+    var state = State(cave: cave, minute: 0, totalPressureReleased: 0, currentPosition: originName)
     
-    let _ = State(cave: cave, minute: 0, pressureReleased: 0, currentPosition: originName)
-
-    
-    print(cave)
-    return 0
+    while(true) {
+        do {
+            try state.nextBestMove()
+        }
+        catch {
+            return state.totalPressureReleased
+        }
+    }
 }
 
 
