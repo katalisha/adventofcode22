@@ -87,7 +87,7 @@ Valve JJ has flow rate=21; tunnel leads to valve II
     
     func testCalcs() throws {
         let stateManager = StateManager(maxTime: 30)
-        var state = State(cave: sampleCave, minute: 0, totalPressureReleased: 0, currentPosition: "AA");
+        var state = State(cave: sampleCave, minute: 1, totalPressureReleased: 0, currentPosition: "AA");
         var result = stateManager.toNextState(state: state, openingValve: "DD")
         state = extractState(result: result)
         result = stateManager.toNextState(state: state, openingValve: "BB")
@@ -103,7 +103,7 @@ Valve JJ has flow rate=21; tunnel leads to valve II
 
         
     loop: while(true) {
-            result =  stateManager.toNextState(state: state, openingValve: nil)
+            result =  stateManager.tick(state: state)
             
             switch result {
                 
