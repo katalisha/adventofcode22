@@ -1,10 +1,17 @@
+// 3.3 seconds, 1544839 loops
 import Foundation
 
 typealias Scan = Dictionary<String, ScanLine>
 typealias Cave = Dictionary<String, Valve>
+typealias StateQueue = [(State, Set<Tunnel>)]
  
 enum VolcanoError: Error {
-    case outOfTime
+    case inconsistentState
+}
+
+enum StateUpdateResult {
+    case changed(state:State)
+    case finished(state:State)
 }
 
 struct ScanLine: Hashable {
@@ -20,58 +27,136 @@ struct Valve: Hashable {
     var open = false
 }
 
-struct Tunnel: CustomStringConvertible, Hashable {
+struct Tunnel: Hashable {
     let endValve: String
     let distance: Int
-    
-    var description: String {
-        return "\(endValve): \(distance)"
-    }
 }
 
 struct State {
-    let maxTime = 30
-    private(set) var cave: Cave
-    private(set) var minute: Int
-    private(set) var totalPressureReleased: Int
-    private(set) var currentPosition: String
+    let cave: Cave
+    let minute: Int
+    let totalPressureReleased: Int
+    let currentPosition: String
     var currentValve: Valve {
         get { cave[currentPosition]! }
     }
     
-    private mutating func tick() throws {
-        minute += 1
-        if minute > 30 {
-            throw VolcanoError.outOfTime
+    func filterTunnelsToClosedValves(_ tunnels: Set<Tunnel>) -> Set<Tunnel> {
+        let openValves = cave.compactMap{ (key: String, value: Valve) in
+            return value.open ? key : nil
         }
-        let pressureReleased = cave.reduce(0, { $0 + (($1.value.open) ? $1.value.flowRate : 0)})
-        totalPressureReleased += pressureReleased
+        return tunnels.filter { !openValves.contains($0.endValve) }
     }
     
-    private mutating func opening(valveName: String) throws {
-        guard (valveName == currentPosition && currentValve.open == false) else { return }
-        try tick()
-        cave[valveName]!.open = true
+    func possibleTunnels() -> Set<Tunnel> {
+        return filterTunnelsToClosedValves(currentValve.tunnels)
     }
+}
 
-    private mutating func movingTo(valveName: String) throws {
-        let tunnelTaken = currentValve.tunnels.first(where: { $0.endValve == valveName })!
+struct StateManager {
+    let maxTime: Int
+    
+    func tick(state: State, cycles: Int = 1) -> StateUpdateResult {
+        let maxCycles = min((maxTime - state.minute), cycles)
+        let minute = state.minute + maxCycles
 
-        for _ in 0..<tunnelTaken.distance {
-            try tick()
-            print("Moving to valve \(valveName)")
-            print()
+        let totalPressureReleased = (state.cave.reduce(0, { $0 + (($1.value.open) ? $1.value.flowRate : 0)}) * maxCycles) + state.totalPressureReleased
+        let newState = State(cave: state.cave, minute: minute, totalPressureReleased: totalPressureReleased, currentPosition: state.currentPosition)
+        
+        if minute >= maxTime {
+            return .finished(state: newState)
         }
-        currentPosition = valveName
+        return .changed(state: newState)
     }
     
-    mutating func moveAndOpen(valve: String?) throws {
-        if let next = valve {
-            try movingTo(valveName: next)
-            try opening(valveName: next)
+    func opening(state: State, valveName: String) throws -> StateUpdateResult {
+        guard (valveName == state.currentPosition && state.currentValve.open == false) else { throw  VolcanoError.inconsistentState }
+        let tickResult = tick(state: state)
+        
+        switch tickResult {
+            case .finished(_):
+                return tickResult
+            case .changed(let state):
+                var cave = state.cave
+                cave[valveName]!.open = true
+                return .changed(state: State(cave: cave,
+                                             minute: state.minute,
+                                             totalPressureReleased: state.totalPressureReleased,
+                                             currentPosition: state.currentPosition))
+        }
+    }
+
+    func movingTo( state: State, valveName: String) -> StateUpdateResult {
+        let tunnelTaken = state.currentValve.tunnels.first(where: { $0.endValve == valveName })!
+        let tickResult = tick(state: state, cycles: tunnelTaken.distance)
+        
+        switch tickResult {
+            case .finished(state: _):
+                return tickResult
+            case .changed(state: let state):
+                return .changed(state: State(cave: state.cave,
+                                             minute: state.minute,
+                                             totalPressureReleased: state.totalPressureReleased,
+                                             currentPosition: valveName))
+
+        }
+    }
+    
+    func toNextState(state: State, openingValve: String?) -> StateUpdateResult {
+        var result: StateUpdateResult
+        
+        if let next = openingValve {
+            result = movingTo(state: state, valveName: next)
+            
+            switch result {
+            case .changed(state: let state):
+                result = try! opening(state: state, valveName: next)
+            case .finished(state: _):
+                return result
+            }
         } else {
-            try tick()
+            result = tick(state: state)
         }
+        return result
+    }
+    
+    func runQueue(initialQueue: StateQueue) throws -> Int {
+        var maxPressure = 0
+        var queue = initialQueue
+        var loops = 0
+        
+        while let (state, tunnels) = queue.popLast() {
+
+            for t in tunnels {
+                loops += 1
+                let result = toNextState(state: state, openingValve: t.endValve)
+                
+                switch result {
+                    case .changed(state: let state):
+                        // eliminate open tunnels
+                        let nextTunnels = state.possibleTunnels()
+                        
+                        if nextTunnels.count == 0 {
+                            let result = tick(state: state, cycles: maxTime - state.minute + 1)
+                            // run out the clock for states with no tunnels
+                            switch result {
+                                case .finished(state: let state):
+                                    maxPressure = max(maxPressure, state.totalPressureReleased)
+                                default:
+                                    throw VolcanoError.inconsistentState
+                            }
+                        } else {
+                            //queue append if more tunnels
+                            queue.append((state, nextTunnels))
+                        }
+                    case .finished(state: let state):
+                        maxPressure = max(maxPressure, state.totalPressureReleased)
+                        break
+                }
+            }
+        }
+        print("loops: \(loops)")
+        return maxPressure
     }
 }
 
@@ -90,12 +175,10 @@ func achieveMaximumFlow(data: String) -> Int {
     
     let originName = "AA"
     let cave = buildCave(originName: originName, valves: Dictionary(uniqueKeysWithValues: valves))
-    print(cave)
-    var state = State(cave: cave, minute: 0, totalPressureReleased: 0, currentPosition: originName)
-    
-    return 0
+    let state = State(cave: cave, minute: 0, totalPressureReleased: 0, currentPosition: originName)
+    let stateManager = StateManager(maxTime: 30)
+    return try! stateManager.runQueue(initialQueue: [(state, cave[originName]!.tunnels)])
 }
-
 
 // MARK: Pathfinding
 

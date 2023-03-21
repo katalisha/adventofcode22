@@ -86,20 +86,41 @@ Valve JJ has flow rate=21; tunnel leads to valve II
     }
     
     func testCalcs() throws {
+        let stateManager = StateManager(maxTime: 30)
         var state = State(cave: sampleCave, minute: 0, totalPressureReleased: 0, currentPosition: "AA");
-        try! state.moveAndOpen(valve: "DD")
-        try! state.moveAndOpen(valve: "BB")
-        try! state.moveAndOpen(valve: "JJ")
-        try! state.moveAndOpen(valve: "HH")
-        try! state.moveAndOpen(valve: "EE")
-        try! state.moveAndOpen(valve: "CC")
+        var result = stateManager.toNextState(state: state, openingValve: "DD")
+        state = extractState(result: result)
+        result = stateManager.toNextState(state: state, openingValve: "BB")
+        state = extractState(result: result)
+        result = stateManager.toNextState(state: state, openingValve: "JJ")
+        state = extractState(result: result)
+        result = stateManager.toNextState(state: state, openingValve: "HH")
+        state = extractState(result: result)
+        result = stateManager.toNextState(state: state, openingValve: "EE")
+        state = extractState(result: result)
+        result = stateManager.toNextState(state: state, openingValve: "CC")
+        state = extractState(result: result)
+
         
-        while(true) {
-            do
-            {
-                try state.moveAndOpen(valve: nil)
-            } catch {
-                break
+    loop: while(true) {
+            result =  stateManager.toNextState(state: state, openingValve: nil)
+            
+            switch result {
+                
+            case .changed(state: let newState):
+                state = newState
+            case .finished(state: let newState):
+                state = newState
+                break loop
+            }
+        }
+        
+        func extractState(result: StateUpdateResult) -> State {
+            switch result {
+            case .changed(state: let state):
+                return state
+            case .finished(state: let state):
+                return state
             }
         }
         
@@ -108,7 +129,7 @@ Valve JJ has flow rate=21; tunnel leads to valve II
     }
     
     func testFile() throws {
-        XCTAssertEqual(runFile(), 0)
+        XCTAssertEqual(runFile(), 1647)
     }
     
     func testBuildCave() throws {
