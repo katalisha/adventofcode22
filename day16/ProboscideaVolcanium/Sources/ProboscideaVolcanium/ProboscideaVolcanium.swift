@@ -1,9 +1,11 @@
 // 2.4 seconds, 794196 loops
 import Foundation
 
+// MARK: Model
+
 typealias Scan = Dictionary<String, ScanLine>
 typealias Cave = Dictionary<String, Valve>
-typealias StateQueue = [(State, Set<Tunnel>)]
+typealias StateStack = [(State, Set<Tunnel>)]
  
 enum VolcanoError: Error {
     case inconsistentState
@@ -41,15 +43,13 @@ struct State {
         get { cave[currentPosition]! }
     }
     
-    func filterTunnelsToClosedValves(_ tunnels: Set<Tunnel>) -> Set<Tunnel> {
-        let openValves = cave.compactMap{ (key: String, value: Valve) in
-            return value.open ? key : nil
-        }
+    func removeTunnelsToOpenValves(_ tunnels: Set<Tunnel>) -> Set<Tunnel> {
+        let openValves = cave.compactMap{ $0.value.open ? $0.key : nil }
         return tunnels.filter { !openValves.contains($0.endValve) }
     }
     
     func possibleTunnels() -> Set<Tunnel> {
-        return filterTunnelsToClosedValves(currentValve.tunnels)
+        return removeTunnelsToOpenValves(currentValve.tunnels)
     }
 }
 
@@ -79,8 +79,8 @@ struct StateManager {
                                  currentPosition: state.currentPosition))
     }
 
-    func movingTo( state: State, valveName: String) -> StateUpdateResult {
-        let tunnelTaken = state.currentValve.tunnels.first(where: { $0.endValve == valveName })!
+    func movingTo( state: State, valveName: String) throws -> StateUpdateResult {
+        guard let tunnelTaken = state.currentValve.tunnels.first(where: { $0.endValve == valveName }) else { throw  VolcanoError.inconsistentState }
         return tick(state: State(cave: state.cave,
                                  minute: state.minute,
                                  totalPressureReleased: state.totalPressureReleased,
@@ -88,49 +88,42 @@ struct StateManager {
                     cycles: tunnelTaken.distance)
     }
     
-    func toNextState(state: State, openingValve: String) -> StateUpdateResult {
-        var result: StateUpdateResult
-        
-        result = movingTo(state: state, valveName: openingValve)
-        switch result {
+    func toNextState(state: State, openingValve: String) throws -> StateUpdateResult {
+        let moveResult = try movingTo(state: state, valveName: openingValve)
+        switch moveResult {
             case .finished(state: _):
-                return result
+                return moveResult
             case .changed(state: let state):
-                result = try! opening(state: state, valveName: openingValve)
+                let openResult = try opening(state: state, valveName: openingValve)
+                return openResult
         }
-        return result
     }
     
-    func runQueue(initialQueue: StateQueue) throws -> Int {
+    func runQueue(initialStack: StateStack) throws -> Int {
         var maxPressure = 0
-        var queue = initialQueue
+        var stack = initialStack
         var loops = 0
         
-        while let (state, tunnels) = queue.popLast() {
+        while let (state, tunnels) = stack.popLast() {
 
             for t in tunnels {
                 loops += 1
-                let result = toNextState(state: state, openingValve: t.endValve)
+                let result = try! toNextState(state: state, openingValve: t.endValve)
                 
                 switch result {
-                    case .changed(state: let state):
-                        let nextTunnels = state.possibleTunnels()
-                        if nextTunnels.count > 0 {
-                            queue.append((state, nextTunnels))
-
-                        } else {
-                            let result = tick(state: state, cycles: maxTime - state.minute)
-                            switch result {
-                                case .finished(state: let state):
-                                    maxPressure = max(maxPressure, state.totalPressureReleased)
-                                default:
-                                    throw VolcanoError.inconsistentState
-                            }
-                        }
-                    
                     case .finished(state: let state):
                         maxPressure = max(maxPressure, state.totalPressureReleased)
                         break
+                    
+                    case .changed(state: let state):
+                        let nextTunnels = state.possibleTunnels()
+                        if nextTunnels.count > 0 {
+                            stack.append((state, nextTunnels))
+                        } else {
+                            let finalResult = tick(state: state, cycles: maxTime - state.minute)
+                            guard case let .finished(state) = finalResult else { throw VolcanoError.inconsistentState }
+                            maxPressure = max(maxPressure, state.totalPressureReleased)
+                        }
                 }
             }
         }
@@ -148,15 +141,15 @@ func runFile() -> Int {
 }
 
 @available(macOS 13.0, *)
-func achieveMaximumFlow(data: String) -> Int {
-    let valves = data.components(separatedBy: "\n")
-        .compactMap { parseLine(line: $0) }
+func achieveMaximumFlow(data: String, originName: String = "AA") -> Int {
+    let valves = Dictionary(uniqueKeysWithValues: data
+        .components(separatedBy: "\n")
+        .compactMap { parseLine(line: $0) })
     
-    let originName = "AA"
-    let cave = buildCave(originName: originName, valves: Dictionary(uniqueKeysWithValues: valves))
+    let cave = buildCave(originName: originName, valves: valves)
     let state = State(cave: cave, minute: 1, totalPressureReleased: 0, currentPosition: originName)
     let stateManager = StateManager(maxTime: 30)
-    return try! stateManager.runQueue(initialQueue: [(state, cave[originName]!.tunnels)])
+    return try! stateManager.runQueue(initialStack: [(state, cave[originName]!.tunnels)])
 }
 
 // MARK: Pathfinding
@@ -169,10 +162,10 @@ func buildCave(originName: String, valves: Scan) -> Cave {
                     flowRate: $0.value.flowRate,
                     name: $0.key,
                     tunnels: visitNeighbours(
-                        neighbourNames: [$0.value.name],
+                        neighbours: [$0.value.name],
                         distance: 0,
-                        visitedNames: [],
-                        allValves: valves,
+                        visited: [],
+                        scan: valves,
                         tunnels: []
                     )
                 )
@@ -181,24 +174,24 @@ func buildCave(originName: String, valves: Scan) -> Cave {
     )
 }
 
-func visitNeighbours(neighbourNames: Set<String>, distance: Int, visitedNames: Set<String>, allValves: Scan, tunnels: Set<Tunnel>) -> Set<Tunnel> {
-    let unvistedNeighbourValves = neighbourNames
-        .subtracting(visitedNames)
-        .compactMap { allValves[$0] }
+func visitNeighbours(neighbours: Set<String>, distance: Int, visited: Set<String>, scan: Scan, tunnels: Set<Tunnel>) -> Set<Tunnel> {
+    let unvisitedScanData = neighbours
+        .subtracting(visited)
+        .compactMap { scan[$0] }
 
-    guard !unvistedNeighbourValves.isEmpty else { return tunnels }
+    guard !unvisitedScanData.isEmpty else { return tunnels }
 
     let newTunnels = (distance == 0) ? [] :
-        unvistedNeighbourValves
+        unvisitedScanData
             .filter{ $0.flowRate > 0 }
             .map{ Tunnel(endValve: $0.name, distance: distance)}
     
-    let nextNeighbourNames = unvistedNeighbourValves.flatMap { $0.neighbours }
+    let nextNeighbours = Set(unvisitedScanData.flatMap { $0.neighbours })
 
-    return visitNeighbours(neighbourNames: Set(nextNeighbourNames),
+    return visitNeighbours(neighbours: nextNeighbours,
                         distance: distance + 1,
-                        visitedNames: visitedNames.union(neighbourNames),
-                        allValves: allValves,
+                        visited: visited.union(neighbours),
+                        scan: scan,
                         tunnels: tunnels.union(newTunnels))
 }
 
